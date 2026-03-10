@@ -1,0 +1,138 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\title{Interim Report: Robot Arm Simulation with Inverse Kinematics and 3D Projection}
+\author{Roman Prokhorov, Nazar Pasichnyk, Mykola Balyk}
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Research Area}
+
+Robotic manipulation is a central problem in robotics, computer animation, and industrial automation. A fundamental challenge in this field is \textbf{inverse kinematics} (IK): given a desired position of a robot's end-effector (e.g., a gripper), determine the joint angles that achieve it~\cite{mathworks}. Unlike the straightforward \textit{forward kinematics}---where joint angles directly yield the end-effector position via matrix multiplication---inverse kinematics requires solving a nonlinear system that may have zero, one, or infinitely many solutions.
+
+This problem is deeply rooted in \textbf{linear algebra}. The kinematic chain of a robot arm is modeled as a product of $4 \times 4$ transformation matrices (rotations and translations in homogeneous coordinates). The iterative IK solution relies on the \textbf{Jacobian matrix}, its pseudoinverse, and \textbf{Singular Value Decomposition} (SVD) for numerical stability. Visualizing the arm in real time additionally requires perspective projection matrices and orthonormal basis construction for the camera---all core linear algebra operations.
+
+This project is interesting because it connects abstract algebraic concepts (matrix groups, pseudoinverses, SVD) directly to a tangible, visual application: a moving robot arm that tracks a target in 3D space.
+
+\section{Aim and Tasks}
+
+The aim is to develop a \textbf{real-time 3D robot arm simulator} that demonstrates how linear algebra techniques power robotic control and rendering. Concretely, we plan to:
+
+\begin{enumerate}[nosep]
+    \item Model a multi-joint robot arm using homogeneous transformation matrices (rotation matrices from $SO(3)$ embedded in $4 \times 4$ form).
+    \item Implement \textbf{forward kinematics} (FK) by chaining joint transformations: $T_{\text{end}} = T_1(\theta_1) \cdot T_2(\theta_2) \cdots T_n(\theta_n)$.
+    \item Implement \textbf{inverse kinematics} using the Jacobian pseudoinverse method to solve for joint angles given a target position.
+    \item Use SVD-based damped pseudoinverse to handle singular or near-singular configurations.
+    \item Render the 3D arm on a 2D screen using a \textbf{perspective projection matrix} and a camera view matrix.
+    \item Build an interactive visualization where the user can move the target and observe the arm tracking it in real time.
+\end{enumerate}
+
+\section{Literature Review and Chosen Method}
+
+Several approaches exist for solving inverse kinematics:
+
+\begin{itemize}[nosep]
+    \item \textbf{Analytical (closed-form) solutions} exist for specific arm geometries (e.g., 6-DOF arms with spherical wrists)~\cite{roboticworx}. They are fast but not generalizable.
+    \item \textbf{Jacobian Transpose method}: updates angles via $\Delta\theta = \alpha \, J^T \Delta p$. Simple and cheap, but convergence is slow and depends on step size~\cite{buss2004}.
+    \item \textbf{Jacobian Pseudoinverse method}: $\Delta\theta = J^+ \Delta p$ where $J^+ = J^T(JJ^T)^{-1}$. Converges faster and provides a least-norm solution, but is unstable near singularities~\cite{buss2004}.
+    \item \textbf{Damped Least Squares (DLS)}: $\Delta\theta = J^T(JJ^T + \lambda^2 I)^{-1}\Delta p$. Adds a damping factor $\lambda$ to avoid blow-up at singularities~\cite{buss2004}.
+    \item \textbf{CCD (Cyclic Coordinate Descent)}: a heuristic iterative method that adjusts one joint at a time. Easy to implement, but can produce unnatural motion~\cite{buss2004}.
+    \item \textbf{FABRIK}: a fast geometric method that operates on positions rather than angles~\cite{buss2004}.
+\end{itemize}
+
+We choose the \textbf{Damped Least Squares} approach with \textbf{SVD-based pseudoinverse} computation. This method directly showcases key linear algebra concepts (Jacobian, SVD, matrix inversion, transpose), converges reliably, and handles singularities gracefully by thresholding small singular values:
+\[
+J = U \Sigma V^T, \qquad J^+ = V \Sigma^+ U^T,
+\]
+where $\Sigma^+$ replaces each singular value $\sigma_i$ with $\sigma_i / (\sigma_i^2 + \lambda^2)$.
+
+For 3D rendering, we use the standard perspective projection pipeline with a $4\times 4$ projection matrix followed by perspective divide.
+
+\section{Pseudocode}
+
+\begin{algorithm}[H]
+\caption{Inverse Kinematics via Damped Least Squares}
+\begin{algorithmic}[1]
+\Require Joint angles $\theta = [\theta_1, \dots, \theta_n]$, target position $p_{\text{target}}$, damping $\lambda$, tolerance $\varepsilon$
+\Ensure Updated joint angles $\theta$
+\While{$\| p_{\text{end}} - p_{\text{target}} \| > \varepsilon$}
+    \State $p_{\text{end}} \gets \text{ForwardKinematics}(\theta)$ \Comment{chain of $4\times4$ matrix multiplications}
+    \State $\Delta p \gets p_{\text{target}} - p_{\text{end}}$
+    \State Compute Jacobian $J$: column $j = \text{axis}_j \times (p_{\text{end}} - p_j)$
+    \State $U, \Sigma, V^T \gets \text{SVD}(J)$ \Comment{decompose the $3 \times n$ Jacobian}
+    \State $\Sigma^+ \gets \text{diag}\!\left(\frac{\sigma_i}{\sigma_i^2 + \lambda^2}\right)$ \Comment{damped inverse of singular values}
+    \State $J^+ \gets V \, \Sigma^+ U^T$
+    \State $\Delta\theta \gets J^+ \cdot \Delta p$
+    \State $\theta \gets \theta + \Delta\theta$
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Rendering Pipeline (per frame)}
+\begin{algorithmic}[1]
+\State Compute all joint world positions via FK
+\State Construct View matrix from camera position, look-at, and up vector
+\State For each joint position $p$: compute $p_{\text{screen}} = P \cdot V \cdot p$ and perspective-divide
+\State Draw line segments between consecutive projected joints
+\end{algorithmic}
+\end{algorithm}
+
+\section{Testing Plan}
+
+We will validate the implementation through the following tests:
+
+\begin{enumerate}[nosep]
+    \item \textbf{FK consistency}: set known joint angles (e.g., all zeros), verify the end-effector position matches the expected sum of link lengths along the initial axis.
+    \item \textbf{IK convergence}: place the target at reachable positions and check that the error $\|p_{\text{end}} - p_{\text{target}}\|$ decreases monotonically and drops below $\varepsilon$ within a reasonable number of iterations.
+    \item \textbf{Unreachable targets}: set the target outside the arm's workspace and verify the arm fully extends toward it without numerical divergence.
+    \item \textbf{Singularity robustness}: move the target so the arm passes through a fully stretched (singular) configuration; verify no NaN or explosion in joint angles.
+    \item \textbf{Projection correctness}: compare projected 2D coordinates against manually computed values for simple camera setups.
+\end{enumerate}
+
+No external datasets are needed. All test data (target positions, arm configurations) is generated programmatically. The visualization itself serves as a continuous qualitative test---unnatural motion or rendering artifacts are immediately visible.
+
+\section{Plan of Future Work}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Week} & \textbf{Task} & \textbf{Responsible} \\
+\midrule
+1--2 & Implement FK, rotation matrices, homogeneous transforms & All \\
+3 & Implement Jacobian computation and DLS-based IK solver & Roman, Nazar \\
+4 & Implement 3D projection and camera controls & Mykola \\
+5 & Integrate IK + rendering into interactive visualization & All \\
+6 & Testing, singularity edge cases, performance tuning & All \\
+7 & Final report writing and presentation preparation & All \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Potential Challenges}
+
+\begin{itemize}[nosep]
+    \item \textbf{Numerical instability near singularities}: when the arm is fully extended or folded, the Jacobian becomes rank-deficient. The damped pseudoinverse mitigates this, but tuning $\lambda$ is nontrivial---too large slows convergence, too small reintroduces instability.
+    \item \textbf{Local minima}: the Jacobian-based method is a local optimizer. The arm may get stuck in configurations that are locally optimal but far from the global solution. We may need to add random restarts or joint-limit handling.
+    \item \textbf{Real-time performance}: SVD computation every frame can be expensive for many joints. We may need to limit the number of IK iterations per frame or use the simpler Jacobian transpose as a fallback.
+    \item \textbf{3D interaction}: building intuitive mouse-based 3D target control requires careful mapping from 2D screen coordinates back to 3D space (an inverse projection problem in itself).
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{buss2004} S.~Buss, ``Introduction to Inverse Kinematics with Jacobian Transpose, Pseudoinverse and Damped Least Squares Methods,'' 2004. Available: \url{https://math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf}
+\bibitem{roboticworx} RoboticWorx, ``Inverse Kinematics.'' Available: \url{https://roboticworx.io/blogs/projects/inverse-kinematics}
+\bibitem{mathworks} MathWorks, ``Modeling Inverse Kinematics in a Robotic Arm.'' Available: \url{https://se.mathworks.com/help/fuzzy/modeling-inverse-kinematics-in-a-robotic-arm.html}
+\end{thebibliography}
+
+\end{document}
