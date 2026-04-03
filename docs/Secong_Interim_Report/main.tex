@@ -1,0 +1,335 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+
+% Code listing style
+\lstdefinestyle{python}{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    stringstyle=\color{red},
+    commentstyle=\color{gray},
+    numbers=left,
+    numberstyle=\tiny,
+    breaklines=true,
+    frame=single,
+}
+
+\title{Second Interim Report:\\Robot Arm Simulation with Inverse Kinematics and 3D Projection}
+\author{Roman Prokhorov, Nazar Pasichnyk, Mykola Balyk}
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Project Status Overview}
+
+This report presents the progress on our Robot Arm Inverse Kinematics Visualization project. Since the first interim report, we have completed the software architecture design, implemented the core mathematical framework, and established the integration structure. The project is on track for completion.
+
+\subsection{Completed Work}
+
+\begin{itemize}[nosep]
+    \item Complete project structure and Python packaging
+    \item Core vector and transformation mathematics (shared foundation)
+    \item Interactive visualization application framework
+    \item Comprehensive test suite structure
+    \item Documentation and teammate implementation guides
+\end{itemize}
+
+\subsection{In Progress}
+
+\begin{itemize}[nosep]
+    \item Forward kinematics implementation (Nazar)
+    \item Jacobian-based inverse kinematics solver (Nazar)
+    \item 3D projection pipeline (Mykola)
+    \item Camera system with orbit controls (Mykola)
+\end{itemize}
+
+\section{Software Architecture}
+
+We designed a modular architecture that separates mathematical components from visualization:
+
+\begin{verbatim}
+robot_arm/
+├── core/              # Linear algebra primitives
+│   ├── vectors.py     # Vector3, Vector4 classes
+│   └── transforms.py  # Rotation matrices, Transform4x4
+├── kinematics/        # Robotics computations
+│   ├── forward.py     # Forward kinematics
+│   └── inverse.py     # IK solver
+├── rendering/         # 3D graphics
+│   ├── projection.py  # Perspective/orthographic projection
+│   └── camera.py      # Camera models
+└── visualization/     # Application
+    └── app.py         # Main Pygame application
+\end{verbatim}
+
+This design ensures each mathematical concept from Linear Algebra is isolated in its own module, making the connection between theory and implementation explicit.
+
+\section{Mathematical Components Implementation}
+
+\subsection{Vector Operations}
+
+We implemented immutable \texttt{Vector3} and \texttt{Vector4} classes with all standard linear algebra operations:
+
+\begin{lstlisting}[style=python]
+@dataclass(frozen=True, slots=True)
+class Vector3:
+    x: float
+    y: float
+    z: float
+
+    def dot(self, other: Vector3) -> float:
+        """Dot product: a·b = sum(a_i * b_i)"""
+        return self.x*other.x + self.y*other.y + self.z*other.z
+
+    def cross(self, other: Vector3) -> Vector3:
+        """Cross product: a×b perpendicular to both"""
+        return Vector3(
+            self.y*other.z - self.z*other.y,
+            self.z*other.x - self.x*other.z,
+            self.x*other.y - self.y*other.x
+        )
+\end{lstlisting}
+
+Key properties used:
+\begin{itemize}[nosep]
+    \item Dot product for computing angles and projections
+    \item Cross product for Jacobian computation: $J_j = \mathbf{axis}_j \times (\mathbf{p}_{end} - \mathbf{p}_j)$
+    \item Homogeneous coordinate conversion for unified transformations
+\end{itemize}
+
+\subsection{Transformation Matrices}
+
+The \texttt{Transform4x4} class encapsulates $4 \times 4$ homogeneous transformation matrices:
+
+\[
+T = \begin{bmatrix}
+R_{3\times3} & \mathbf{t} \\
+\mathbf{0}^T & 1
+\end{bmatrix}
+\]
+
+where $R \in SO(3)$ is a rotation matrix and $\mathbf{t}$ is the translation vector.
+
+Rotation matrices are implemented for each principal axis:
+
+\begin{equation}
+R_x(\theta) = \begin{bmatrix}
+1 & 0 & 0 \\
+0 & \cos\theta & -\sin\theta \\
+0 & \sin\theta & \cos\theta
+\end{bmatrix}, \quad
+R_y(\theta) = \begin{bmatrix}
+\cos\theta & 0 & \sin\theta \\
+0 & 1 & 0 \\
+-\sin\theta & 0 & \cos\theta
+\end{bmatrix}, \quad
+R_z(\theta) = \begin{bmatrix}
+\cos\theta & -\sin\theta & 0 \\
+\sin\theta & \cos\theta & 0 \\
+0 & 0 & 1
+\end{bmatrix}
+\end{equation}
+
+\subsection{Forward Kinematics Structure}
+
+The robot arm is modeled as a chain of joints, each with:
+\begin{itemize}[nosep]
+    \item Joint type (rotation axis)
+    \item Link length (distance to next joint)
+    \item Current angle $\theta_i$
+    \item Joint limits $[\theta_{min}, \theta_{max}]$
+\end{itemize}
+
+The forward kinematics computes:
+\[
+T_{end} = T_1(\theta_1) \cdot T_2(\theta_2) \cdot \ldots \cdot T_n(\theta_n)
+\]
+
+\begin{lstlisting}[style=python]
+class RobotArm:
+    def get_end_effector_position(self) -> Vector3:
+        """Compute FK: chain all joint transforms."""
+        transforms = self.compute_joint_transforms()
+        return transforms[-1].translation
+\end{lstlisting}
+
+\subsection{Inverse Kinematics Solver Design}
+
+We implemented the Damped Least Squares (DLS) solver structure with SVD-based pseudoinverse:
+
+\begin{algorithm}[H]
+\caption{Damped Least Squares IK Solver (Implementation Structure)}
+\begin{algorithmic}[1]
+\Require Robot arm, target position $\mathbf{p}_{target}$, damping $\lambda$
+\Ensure Joint angles $\boldsymbol{\theta}$
+\For{iteration $= 1$ to max\_iterations}
+    \State $\mathbf{p}_{current} \gets$ ForwardKinematics$(\boldsymbol{\theta})$
+    \State $\Delta\mathbf{p} \gets \mathbf{p}_{target} - \mathbf{p}_{current}$
+    \If{$\|\Delta\mathbf{p}\| < \varepsilon$}
+        \State \Return SUCCESS
+    \EndIf
+    \State $J \gets$ ComputeJacobian() \Comment{$3 \times n$ matrix}
+    \State $U, \Sigma, V^T \gets$ SVD$(J)$
+    \State $\Sigma^+ \gets$ diag$(\sigma_i / (\sigma_i^2 + \lambda^2))$
+    \State $J^+ \gets V \Sigma^+ U^T$
+    \State $\Delta\boldsymbol{\theta} \gets J^+ \cdot \Delta\mathbf{p}$
+    \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \Delta\boldsymbol{\theta}$
+\EndFor
+\State \Return MAX\_ITERATIONS
+\end{algorithmic}
+\end{algorithm}
+
+The Jacobian column for joint $j$ is computed as:
+\[
+J_j = \mathbf{a}_j \times (\mathbf{p}_{end} - \mathbf{p}_j)
+\]
+where $\mathbf{a}_j$ is the rotation axis of joint $j$ in world coordinates.
+
+\subsection{3D Projection Pipeline Design}
+
+The rendering pipeline transforms points through:
+\[
+\mathbf{p}_{screen} = M_{viewport} \cdot \frac{M_{proj} \cdot M_{view} \cdot \mathbf{p}_{world}}{w}
+\]
+
+Perspective projection matrix:
+\[
+P = \begin{bmatrix}
+\frac{f}{aspect} & 0 & 0 & 0 \\
+0 & f & 0 & 0 \\
+0 & 0 & \frac{far+near}{near-far} & \frac{2 \cdot far \cdot near}{near-far} \\
+0 & 0 & -1 & 0
+\end{bmatrix}
+\]
+where $f = \cot(fov_y/2)$.
+
+View matrix construction from camera parameters:
+\[
+V = \begin{bmatrix}
+r_x & r_y & r_z & -\mathbf{r} \cdot \mathbf{e} \\
+u_x & u_y & u_z & -\mathbf{u} \cdot \mathbf{e} \\
+-f_x & -f_y & -f_z & \mathbf{f} \cdot \mathbf{e} \\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+where $(\mathbf{r}, \mathbf{u}, \mathbf{f})$ form an orthonormal basis (right, up, forward).
+
+\section{Visualization Application}
+
+The main application integrates all components:
+
+\begin{lstlisting}[style=python]
+class RobotArmSimulator:
+    def __init__(self):
+        self.arm = RobotArm.create_3dof_arm([2.0, 1.5, 1.0])
+        self.ik_solver = DampedLeastSquaresSolver(damping=0.5)
+        self.camera = OrbitCamera(target=Vector3.zero())
+
+    def run(self):
+        while self.state != AppState.QUIT:
+            self._handle_events()  # Mouse/keyboard input
+            self._update()         # Run IK solver
+            self._render()         # Draw arm and target
+\end{lstlisting}
+
+Features implemented:
+\begin{itemize}[nosep]
+    \item Interactive target positioning (left-click drag)
+    \item Orbit camera controls (right-click drag to rotate, scroll to zoom)
+    \item Grid and coordinate axis visualization
+    \item Workspace boundary display
+    \item Real-time status display (joint angles, IK error)
+\end{itemize}
+
+\section{Testing Strategy}
+
+We created a comprehensive test suite with three test files:
+
+\begin{enumerate}[nosep]
+    \item \textbf{test\_core.py}: Vector operations, rotation matrix properties (orthogonality, determinant), transformation composition
+    \item \textbf{test\_kinematics.py}: FK consistency, IK convergence, Jacobian numerical verification
+    \item \textbf{test\_rendering.py}: Projection matrix correctness, camera view matrix, viewport transforms
+\end{enumerate}
+
+Key test cases:
+\begin{itemize}[nosep]
+    \item Rotation matrix orthogonality: $R^T R = I$, $\det(R) = 1$
+    \item FK zero-angle configuration: arm extends along initial axis
+    \item IK convergence: error decreases monotonically
+    \item Singularity robustness: no NaN at stretched configurations
+\end{itemize}
+
+\section{Linear Algebra Concepts Demonstrated}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Concept} & \textbf{Module} & \textbf{Application} \\
+\midrule
+Vector dot/cross product & vectors.py & Jacobian, camera basis \\
+Matrix multiplication & transforms.py & FK chain, projection pipeline \\
+Special Orthogonal Group SO(3) & transforms.py & Joint rotation matrices \\
+Homogeneous coordinates & transforms.py, projection.py & Unified transforms \\
+Jacobian matrix & inverse.py & Joint-to-Cartesian mapping \\
+SVD decomposition & inverse.py & Stable pseudoinverse \\
+Matrix inversion & transforms.py, inverse.py & Transform inverse, IK \\
+Orthonormal basis & camera.py & View matrix construction \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Updated Work Plan}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Task} & \textbf{Responsible} & \textbf{Status} & \textbf{Deadline} \\
+\midrule
+Project structure \& architecture & Roman & Complete & Week 4 \\
+Core vectors \& transforms & Team & Complete & Week 4 \\
+Forward kinematics & Nazar & In Progress & Week 5 \\
+Jacobian \& IK solver & Nazar & In Progress & Week 5 \\
+3D projection matrices & Mykola & In Progress & Week 5 \\
+Camera system & Mykola & In Progress & Week 5 \\
+Visualization integration & Roman & Complete & Week 5 \\
+Testing \& edge cases & Mykola & Pending & Week 6 \\
+Final report & Roman & Pending & Week 7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Challenges Encountered}
+
+\begin{enumerate}[nosep]
+    \item \textbf{Module interdependency}: Careful interface design was needed to allow parallel development. Solved by defining clear function signatures with TODO placeholders.
+
+    \item \textbf{Coordinate system conventions}: Different conventions (Y-up vs Z-up, right-hand vs left-hand) required explicit documentation. We standardized on right-hand Y-up.
+
+    \item \textbf{Numerical stability}: The IK solver required damping parameter tuning. We set default $\lambda = 0.5$ as a balance between stability and convergence speed.
+\end{enumerate}
+
+\section{Conclusion}
+
+The project is progressing according to plan. The core architecture and visualization framework are complete, with mathematical implementations underway. The modular design ensures each team member can work independently while maintaining integration compatibility. We expect to complete all implementations by Week 5 and finalize testing by Week 6.
+
+\begin{thebibliography}{9}
+\bibitem{buss2004} S.~Buss, ``Introduction to Inverse Kinematics with Jacobian Transpose, Pseudoinverse and Damped Least Squares Methods,'' 2004.
+\bibitem{strang} G.~Strang, ``Introduction to Linear Algebra,'' 5th ed., Wellesley-Cambridge Press, 2016.
+\bibitem{murray} R.~Murray, Z.~Li, S.~Sastry, ``A Mathematical Introduction to Robotic Manipulation,'' CRC Press, 1994.
+\end{thebibliography}
+
+\end{document}
