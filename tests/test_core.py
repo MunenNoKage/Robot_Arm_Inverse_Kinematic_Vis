@@ -135,7 +135,6 @@ class TestVector4:
 class TestRotationMatrices:
     """Tests for rotation matrix functions."""
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_rotation_x_90(self):
         """Test 90° rotation around X-axis."""
         R = rotation_x(math.pi / 2)
@@ -146,7 +145,6 @@ class TestRotationMatrices:
         expected = np.array([0, 0, 1])
         np.testing.assert_array_almost_equal(result, expected)
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_rotation_y_90(self):
         """Test 90° rotation around Y-axis."""
         R = rotation_y(math.pi / 2)
@@ -157,7 +155,6 @@ class TestRotationMatrices:
         expected = np.array([1, 0, 0])
         np.testing.assert_array_almost_equal(result, expected)
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_rotation_z_90(self):
         """Test 90° rotation around Z-axis."""
         R = rotation_z(math.pi / 2)
@@ -168,7 +165,6 @@ class TestRotationMatrices:
         expected = np.array([0, 1, 0])
         np.testing.assert_array_almost_equal(result, expected)
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_rotation_orthogonality(self):
         """Test that rotation matrices are orthogonal."""
         for theta in [0, math.pi/4, math.pi/2, math.pi]:
@@ -179,7 +175,6 @@ class TestRotationMatrices:
                 # det(R) should be 1
                 assert abs(np.linalg.det(R) - 1.0) < 1e-10
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_rotation_inverse_is_transpose(self):
         """Test R^(-1) = R^T property."""
         R = rotation_x(0.5)
@@ -190,7 +185,6 @@ class TestRotationMatrices:
 class TestTranslationMatrix:
     """Tests for translation matrix function."""
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_translation_point(self):
         """Test translating a point."""
         T = translation_matrix(1, 2, 3)
@@ -199,7 +193,6 @@ class TestTranslationMatrix:
         expected = np.array([1, 2, 3, 1])
         np.testing.assert_array_almost_equal(result, expected)
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_translation_direction_invariant(self):
         """Test that directions are not affected by translation."""
         T = translation_matrix(1, 2, 3)
@@ -217,7 +210,6 @@ class TestTransform4x4:
         T = Transform4x4.identity()
         np.testing.assert_array_almost_equal(T.matrix, np.eye(4))
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_composition(self):
         """Test transform composition."""
         T1 = Transform4x4.from_translation(1, 0, 0)
@@ -230,7 +222,6 @@ class TestTransform4x4:
         assert abs(result.x - 1.0) < 1e-10
         assert abs(result.y - 1.0) < 1e-10
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_inverse(self):
         """Test transform inverse."""
         T = Transform4x4.from_translation(1, 2, 3)

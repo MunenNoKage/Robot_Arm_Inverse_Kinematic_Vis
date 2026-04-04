@@ -63,7 +63,6 @@ class TestRobotArm:
 class TestForwardKinematics:
     """Tests for forward kinematics computation."""
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_fk_zero_angles(self):
         """Test FK with all zero angles."""
         arm = RobotArm.create_3dof_arm([2.0, 1.5, 1.0])
@@ -77,7 +76,6 @@ class TestForwardKinematics:
         assert abs(end_pos.y) < 1e-6
         assert abs(end_pos.z) < 1e-6
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_fk_90_degree(self):
         """Test FK with 90° first joint."""
         arm = RobotArm.create_3dof_arm([2.0, 1.5, 1.0])
@@ -89,19 +87,18 @@ class TestForwardKinematics:
         assert abs(end_pos.x) < 1e-6
         assert abs(end_pos.y - 4.5) < 1e-6
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_fk_folded(self):
         """Test FK with folded arm configuration."""
         arm = RobotArm.create_3dof_arm([2.0, 2.0, 2.0])
         arm.set_angles([0.0, math.pi, 0.0])
 
-        # Second link should fold back
+        # Second link folds back, third link continues in same direction as second
         end_pos = arm.get_end_effector_position()
 
-        # With equal link lengths and 180° fold: 2 - 2 + 2 = 2
-        assert abs(end_pos.x - 2.0) < 1e-6
+        # With equal link lengths and 180° fold: 2 - 2 - 2 = -2
+        # (third link continues in -X direction due to accumulated rotation)
+        assert abs(end_pos.x - (-2.0)) < 1e-6
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_joint_positions(self):
         """Test getting all joint positions."""
         arm = RobotArm.create_3dof_arm([2.0, 1.0, 0.5])
@@ -121,7 +118,6 @@ class TestForwardKinematics:
 class TestInverseKinematics:
     """Tests for inverse kinematics solver."""
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_ik_reachable_target(self):
         """Test IK for a reachable target."""
         arm = RobotArm.create_3dof_arm([2.0, 1.5, 1.0])
@@ -136,7 +132,6 @@ class TestInverseKinematics:
         assert result.status == IKStatus.SUCCESS
         assert result.final_error < 0.01
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_ik_unreachable_target(self):
         """Test IK for unreachable target."""
         arm = RobotArm.create_3dof_arm([2.0, 1.5, 1.0])  # Total reach = 4.5
@@ -148,7 +143,6 @@ class TestInverseKinematics:
         # Should not succeed, but should not crash
         assert result.status in [IKStatus.MAX_ITERATIONS, IKStatus.UNREACHABLE]
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_ik_error_decreases(self):
         """Test that error decreases monotonically (usually)."""
         arm = RobotArm.create_3dof_arm()
@@ -162,7 +156,6 @@ class TestInverseKinematics:
             # Final error should be less than initial
             assert result.error_history[-1] < result.error_history[0]
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_ik_multiple_solutions(self):
         """Test that IK finds a valid solution from different starts."""
         arm = RobotArm.create_3dof_arm()
@@ -208,7 +201,6 @@ class TestWorkspaceAnalysis:
 class TestJacobianComputation:
     """Tests for Jacobian computation."""
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_jacobian_shape(self):
         """Test Jacobian has correct shape."""
         arm = RobotArm.create_3dof_arm()
@@ -219,7 +211,6 @@ class TestJacobianComputation:
         # Should be 3×n (3 spatial dimensions, n joints)
         assert J.shape == (3, arm.num_joints)
 
-    @pytest.mark.skip(reason="Waiting for Nazar's implementation")
     def test_jacobian_numerical_verification(self):
         """Verify Jacobian against numerical differentiation."""
         arm = RobotArm.create_3dof_arm()
