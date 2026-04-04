@@ -48,6 +48,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from robot_arm.core.vectors import Vector3
+from robot_arm.core.transforms import Transform4x4
 from robot_arm.kinematics.forward import RobotArm
 
 
@@ -165,23 +166,46 @@ class DampedLeastSquaresSolver(InverseKinematicsSolver):
         Returns:
             IKResult with solution and convergence information
         """
-        # TODO: Implement DLS solver (Nazar)
-        #
-        # Pseudocode:
-        # 1. Initialize angles from initial_angles or arm.get_angles()
-        # 2. error_history = []
-        # 3. for iteration in range(max_iterations):
-        #    a. arm.set_angles(angles)
-        #    b. current_pos = arm.get_end_effector_position()
-        #    c. error_vec = target - current_pos
-        #    d. error = error_vec.magnitude
-        #    e. error_history.append(error)
-        #    f. if error < tolerance: return SUCCESS
-        #    g. J = self._compute_jacobian(arm)
-        #    h. delta_theta = self._compute_step(J, error_vec.to_array())
-        #    i. angles = [a + d for a, d in zip(angles, delta_theta)]
-        # 4. return MAX_ITERATIONS
-        raise NotImplementedError("DampedLeastSquaresSolver.solve: Nazar to implement")
+        # Initialize angles
+        if initial_angles is not None:
+            angles = list(initial_angles)
+        else:
+            angles = arm.get_angles()
+        
+        error_history: List[float] = []
+        
+        for iteration in range(self.max_iterations):
+            arm.set_angles(angles)
+            current_pos = arm.get_end_effector_position()
+            error_vec = target - current_pos
+            error = error_vec.magnitude
+            error_history.append(error)
+            
+            if error < self.tolerance:
+                return IKResult(
+                    angles=angles,
+                    status=IKStatus.SUCCESS,
+                    iterations=iteration + 1,
+                    final_error=error,
+                    error_history=error_history
+                )
+            
+            J = self._compute_jacobian(arm)
+            delta_theta = self._compute_step(J, error_vec.to_array())
+            angles = [a + d for a, d in zip(angles, delta_theta)]
+        
+        # Max iterations reached
+        arm.set_angles(angles)
+        final_pos = arm.get_end_effector_position()
+        final_error = (target - final_pos).magnitude
+        
+        return IKResult(
+            angles=angles,
+            status=IKStatus.MAX_ITERATIONS,
+            iterations=self.max_iterations,
+            final_error=final_error,
+            error_history=error_history
+        )
 
     def _compute_jacobian(self, arm: RobotArm) -> NDArray[np.floating]:
         """
@@ -204,17 +228,33 @@ class DampedLeastSquaresSolver(InverseKinematicsSolver):
         Returns:
             3×n Jacobian matrix
         """
-        # TODO: Implement Jacobian computation (Nazar)
-        #
-        # Steps:
-        # 1. Get all joint transforms from arm.compute_joint_transforms()
-        # 2. Get end-effector position
-        # 3. For each joint j:
-        #    a. Get joint position pⱼ from transform
-        #    b. Get joint axis in world frame (transform the local axis)
-        #    c. Compute column: axis × (p_end - pⱼ)
-        # 4. Stack columns into 3×n matrix
-        raise NotImplementedError("DampedLeastSquaresSolver._compute_jacobian: Nazar to implement")
+        n = arm.num_joints
+        J = np.zeros((3, n), dtype=np.float64)
+        
+        p_end = arm.get_end_effector_position()
+        
+        # Build accumulated transform to get joint positions and world-frame axes
+        accumulated = Transform4x4.from_translation(
+            arm.base_position.x, arm.base_position.y, arm.base_position.z
+        )
+        
+        for j, joint in enumerate(arm.joints):
+            # Get joint axis in world frame
+            local_axis = joint.axis
+            world_axis = accumulated.transform_direction(local_axis)
+            
+            # Get position of this joint (before translation)
+            p_j = accumulated.translation
+            
+            # Compute column: axis × (p_end - p_j)
+            r = p_end - p_j
+            cross = world_axis.cross(r)
+            J[:, j] = cross.to_array()
+            
+            # Update accumulated transform
+            accumulated = accumulated @ joint.get_local_transform()
+        
+        return J
 
     def _compute_step(
         self,
@@ -238,16 +278,20 @@ class DampedLeastSquaresSolver(InverseKinematicsSolver):
         Returns:
             n-dimensional angle update vector
         """
-        # TODO: Implement SVD-based damped pseudoinverse (Nazar)
-        #
-        # Steps:
-        # 1. U, S, Vt = np.linalg.svd(jacobian, full_matrices=False)
-        # 2. For each singular value σᵢ:
-        #    σᵢ⁺ = σᵢ / (σᵢ² + λ²)
-        # 3. Σ⁺ = diag(σ⁺)
-        # 4. J⁺ = Vᵀ.T @ Σ⁺ @ U.T   (note: Vt from SVD is already transposed)
-        # 5. delta_theta = J⁺ @ error * step_scale
-        raise NotImplementedError("DampedLeastSquaresSolver._compute_step: Nazar to implement")
+        U, S, Vt = np.linalg.svd(jacobian, full_matrices=False)
+        
+        # Compute damped singular values
+        lambda_sq = self.damping ** 2
+        S_damped = S / (S ** 2 + lambda_sq)
+        
+        # Compute damped pseudoinverse: J⁺ = V · Σ⁺ · Uᵀ
+        # Note: Vt from SVD is already V transposed, so V = Vt.T
+        J_pinv = Vt.T @ np.diag(S_damped) @ U.T
+        
+        # Compute angle update
+        delta_theta = J_pinv @ error * self.step_scale
+        
+        return delta_theta
 
     def _check_singularity(self, singular_values: NDArray[np.floating]) -> bool:
         """Check if near a singular configuration."""
