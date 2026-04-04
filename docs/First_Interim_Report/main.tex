@@ -26,20 +26,11 @@ This project is interesting because it connects abstract algebraic concepts (mat
 
 \section{Aim and Tasks}
 
-The aim is to develop a \textbf{real-time 3D robot arm simulator} that demonstrates how linear algebra techniques power robotic control and rendering. Concretely, we plan to:
-
-\begin{enumerate}[nosep]
-    \item Model a multi-joint robot arm using homogeneous transformation matrices (rotation matrices from $SO(3)$ embedded in $4 \times 4$ form).
-    \item Implement \textbf{forward kinematics} (FK) by chaining joint transformations: $T_{\text{end}} = T_1(\theta_1) \cdot T_2(\theta_2) \cdots T_n(\theta_n)$.
-    \item Implement \textbf{inverse kinematics} using the Jacobian pseudoinverse method to solve for joint angles given a target position.
-    \item Use SVD-based damped pseudoinverse to handle singular or near-singular configurations.
-    \item Render the 3D arm on a 2D screen using a \textbf{perspective projection matrix} and a camera view matrix.
-    \item Build an interactive visualization where the user can move the target and observe the arm tracking it in real time.
-\end{enumerate}
+The aim is to develop an \textbf{interactive 3D robot arm simulator with inverse kinematics} that visually demonstrates how linear algebra techniques enable a robotic arm to reach user-specified target positions in real time. The system will combine forward kinematics (matrix chain multiplication), inverse kinematics (Jacobian pseudoinverse with SVD), and 3D-to-2D projection (perspective transformation) into a single cohesive application where users can drag a target point and watch the arm adjust its joint angles to track it.
 
 \section{Literature Review and Chosen Method}
 
-Several approaches exist for solving inverse kinematics:
+Several \textit{complete} approaches exist for solving inverse kinematics. Each represents a self-contained method to compute joint angles from a target position:
 
 \begin{itemize}[nosep]
     \item \textbf{Analytical (closed-form) solutions} exist for specific arm geometries (e.g., 6-DOF arms with spherical wrists)~\cite{roboticworx}. They are fast but not generalizable.
@@ -81,10 +72,19 @@ For 3D rendering, we use the standard perspective projection pipeline with a $4\
 \begin{algorithm}[H]
 \caption{Rendering Pipeline (per frame)}
 \begin{algorithmic}[1]
-\State Compute all joint world positions via FK
-\State Construct View matrix from camera position, look-at, and up vector
-\State For each joint position $p$: compute $p_{\text{screen}} = P \cdot V \cdot p$ and perspective-divide
-\State Draw line segments between consecutive projected joints
+\State Compute all joint world positions $\{p_0, p_1, \dots, p_n\}$ via FK (chain of $4\times4$ transforms)
+\State \textbf{Construct View matrix} $V$:
+\State \quad $\vec{z} \gets \text{normalize}(\text{camera\_pos} - \text{look\_at})$ \Comment{camera forward direction}
+\State \quad $\vec{x} \gets \text{normalize}(\text{up} \times \vec{z})$ \Comment{camera right direction}
+\State \quad $\vec{y} \gets \vec{z} \times \vec{x}$ \Comment{camera up direction}
+\State \quad $V \gets \begin{bmatrix} \vec{x}^T & -\vec{x}^T \cdot \text{cam\_pos} \\ \vec{y}^T & -\vec{y}^T \cdot \text{cam\_pos} \\ \vec{z}^T & -\vec{z}^T \cdot \text{cam\_pos} \\ 0\,0\,0 & 1 \end{bmatrix}$ \Comment{orthonormal basis + translation}
+\State \textbf{Construct Projection matrix} $P$ (perspective):
+\State \quad $P \gets \begin{bmatrix} \frac{1}{\tan(\text{fov}/2) \cdot \text{aspect}} & 0 & 0 & 0 \\ 0 & \frac{1}{\tan(\text{fov}/2)} & 0 & 0 \\ 0 & 0 & \frac{f+n}{n-f} & \frac{2fn}{n-f} \\ 0 & 0 & -1 & 0 \end{bmatrix}$
+\For{each joint position $p_i$ (in homogeneous coords)}
+    \State $p_{\text{clip}} \gets P \cdot V \cdot p_i$ \Comment{$4\times4$ matrix multiplications}
+    \State $p_{\text{screen}} \gets (p_{\text{clip}}.x / p_{\text{clip}}.w,\, p_{\text{clip}}.y / p_{\text{clip}}.w)$ \Comment{perspective divide}
+\EndFor
+\State Draw line segments between consecutive projected points $\{p_{\text{screen},0}, \dots, p_{\text{screen},n}\}$
 \end{algorithmic}
 \end{algorithm}
 
@@ -110,12 +110,11 @@ No external datasets are needed. All test data (target positions, arm configurat
 \toprule
 \textbf{Week} & \textbf{Task} & \textbf{Responsible} \\
 \midrule
-1--2 & Implement FK, rotation matrices, homogeneous transforms & Nazar \\
-3 & Implement Jacobian computation and DLS-based IK solver & Nazar \\
-4 & Implement 3D projection and camera controls & Mykola \\
-5 & Integrate IK + rendering into interactive visualization & Roman \\
-6 & Testing, singularity edge cases, performance tuning & Mykola \\
-7 & Final report writing and presentation preparation & Roman \\
+1--2 & Implement FK with rotation matrices and basic 3-link arm & Nazar \\
+3 & Implement Jacobian computation and basic pseudoinverse IK & Nazar \\
+4 & Add SVD-based damped least squares for stability & Mykola \\
+5 & Implement minimal 3D projection and integrate with simple UI & Roman \\
+6 & Testing and bug fixes for core functionality & All \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -123,6 +122,7 @@ No external datasets are needed. All test data (target positions, arm configurat
 \section{Potential Challenges}
 
 \begin{itemize}[nosep]
+    \item \textbf{Project scope and workload}: implementing FK, IK with SVD, full 3D rendering pipeline, and interactive UI within a 6-week timeline is substantial. We will focus on core functionality first (3-link arm, basic DLS solver, minimal projection), with advanced features such as multi-DOF arms and sophisticated camera controls deferred as stretch goals if time permits.
     \item \textbf{Numerical instability near singularities}: when the arm is fully extended or folded, the Jacobian becomes rank-deficient. The damped pseudoinverse mitigates this, but tuning $\lambda$ is nontrivial---too large slows convergence, too small reintroduces instability.
     \item \textbf{Local minima}: the Jacobian-based method is a local optimizer. The arm may get stuck in configurations that are locally optimal but far from the global solution. We may need to add random restarts or joint-limit handling.
     \item \textbf{Real-time performance}: SVD computation every frame can be expensive for many joints. We may need to limit the number of IK iterations per frame or use the simpler Jacobian transpose as a fallback.
