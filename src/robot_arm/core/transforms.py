@@ -57,10 +57,12 @@ def rotation_x(theta: float) -> NDArray[np.floating]:
         >>> R @ [0, 1, 0]  # Y-axis becomes Z-axis
         array([0, 0, 1])
     """
-    # TODO: Implement rotation matrix around X-axis (Nazar)
-    # Use math.cos, math.sin for clarity
-    # Return numpy array with dtype=np.float64
-    raise NotImplementedError("rotation_x: Nazar to implement")
+    c, s = math.cos(theta), math.sin(theta)
+    return np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, c, -s],
+        [0.0, s, c]
+    ], dtype=np.float64)
 
 
 def rotation_y(theta: float) -> NDArray[np.floating]:
@@ -82,8 +84,12 @@ def rotation_y(theta: float) -> NDArray[np.floating]:
     Returns:
         3×3 numpy rotation matrix
     """
-    # TODO: Implement rotation matrix around Y-axis (Nazar)
-    raise NotImplementedError("rotation_y: Nazar to implement")
+    c, s = math.cos(theta), math.sin(theta)
+    return np.array([
+        [c, 0.0, s],
+        [0.0, 1.0, 0.0],
+        [-s, 0.0, c]
+    ], dtype=np.float64)
 
 
 def rotation_z(theta: float) -> NDArray[np.floating]:
@@ -105,8 +111,12 @@ def rotation_z(theta: float) -> NDArray[np.floating]:
     Returns:
         3×3 numpy rotation matrix
     """
-    # TODO: Implement rotation matrix around Z-axis (Nazar)
-    raise NotImplementedError("rotation_z: Nazar to implement")
+    c, s = math.cos(theta), math.sin(theta)
+    return np.array([
+        [c, -s, 0.0],
+        [s, c, 0.0],
+        [0.0, 0.0, 1.0]
+    ], dtype=np.float64)
 
 
 def rotation_axis_angle(axis: Vector3, theta: float) -> NDArray[np.floating]:
@@ -155,8 +165,12 @@ def translation_matrix(tx: float, ty: float, tz: float) -> NDArray[np.floating]:
     Returns:
         4×4 numpy translation matrix
     """
-    # TODO: Implement translation matrix (Nazar)
-    raise NotImplementedError("translation_matrix: Nazar to implement")
+    return np.array([
+        [1.0, 0.0, 0.0, tx],
+        [0.0, 1.0, 0.0, ty],
+        [0.0, 0.0, 1.0, tz],
+        [0.0, 0.0, 0.0, 1.0]
+    ], dtype=np.float64)
 
 
 def homogeneous_transform(
@@ -182,8 +196,17 @@ def homogeneous_transform(
     Returns:
         4×4 numpy transformation matrix
     """
-    # TODO: Implement homogeneous transform composition (Nazar)
-    raise NotImplementedError("homogeneous_transform: Nazar to implement")
+    if isinstance(translation, Vector3):
+        tx, ty, tz = translation.x, translation.y, translation.z
+    else:
+        tx, ty, tz = translation
+    
+    result = np.eye(4, dtype=np.float64)
+    result[:3, :3] = rotation
+    result[0, 3] = tx
+    result[1, 3] = ty
+    result[2, 3] = tz
+    return result
 
 
 @dataclass
@@ -219,26 +242,22 @@ class Transform4x4:
     @classmethod
     def from_rotation_x(cls, theta: float) -> "Transform4x4":
         """Create transform with only X-axis rotation."""
-        # TODO: Use rotation_x and embed in 4×4 form (Nazar)
-        raise NotImplementedError("Transform4x4.from_rotation_x: Nazar to implement")
+        return cls(homogeneous_transform(rotation_x(theta), (0.0, 0.0, 0.0)))
 
     @classmethod
     def from_rotation_y(cls, theta: float) -> "Transform4x4":
         """Create transform with only Y-axis rotation."""
-        # TODO: Use rotation_y and embed in 4×4 form (Nazar)
-        raise NotImplementedError("Transform4x4.from_rotation_y: Nazar to implement")
+        return cls(homogeneous_transform(rotation_y(theta), (0.0, 0.0, 0.0)))
 
     @classmethod
     def from_rotation_z(cls, theta: float) -> "Transform4x4":
         """Create transform with only Z-axis rotation."""
-        # TODO: Use rotation_z and embed in 4×4 form (Nazar)
-        raise NotImplementedError("Transform4x4.from_rotation_z: Nazar to implement")
+        return cls(homogeneous_transform(rotation_z(theta), (0.0, 0.0, 0.0)))
 
     @classmethod
     def from_translation(cls, tx: float, ty: float, tz: float) -> "Transform4x4":
         """Create pure translation transform."""
-        # TODO: Use translation_matrix (Nazar)
-        raise NotImplementedError("Transform4x4.from_translation: Nazar to implement")
+        return cls(translation_matrix(tx, ty, tz))
 
     @classmethod
     def from_rotation_translation(
@@ -247,8 +266,7 @@ class Transform4x4:
         translation: Vector3
     ) -> "Transform4x4":
         """Create combined rotation + translation transform."""
-        # TODO: Use homogeneous_transform (Nazar)
-        raise NotImplementedError("Transform4x4.from_rotation_translation: Nazar to implement")
+        return cls(homogeneous_transform(rotation, translation))
 
     def __matmul__(self, other: "Transform4x4") -> "Transform4x4":
         """
@@ -276,8 +294,9 @@ class Transform4x4:
         Returns:
             Transformed 3D point
         """
-        # TODO: Implement point transformation (Nazar)
-        raise NotImplementedError("Transform4x4.transform_point: Nazar to implement")
+        h = point.to_homogeneous(w=1.0)
+        result = self.matrix @ h.to_array()
+        return Vector4.from_array(result).to_vector3()
 
     def transform_direction(self, direction: Vector3) -> Vector3:
         """
@@ -292,8 +311,9 @@ class Transform4x4:
         Returns:
             Transformed 3D direction
         """
-        # TODO: Implement direction transformation (Nazar)
-        raise NotImplementedError("Transform4x4.transform_direction: Nazar to implement")
+        h = direction.to_homogeneous(w=0.0)
+        result = self.matrix @ h.to_array()
+        return Vector4.from_array(result).to_vector3()
 
     @property
     def rotation(self) -> NDArray[np.floating]:
@@ -322,5 +342,13 @@ class Transform4x4:
         Returns:
             Inverse transform such that T @ T.inverse() = Identity
         """
-        # TODO: Implement efficient inverse using R^T property (Nazar)
-        raise NotImplementedError("Transform4x4.inverse: Nazar to implement")
+        R = self.rotation
+        t = self.translation.to_array()
+        
+        R_inv = R.T
+        t_inv = -R_inv @ t
+        
+        result = np.eye(4, dtype=np.float64)
+        result[:3, :3] = R_inv
+        result[:3, 3] = t_inv
+        return Transform4x4(result)

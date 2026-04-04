@@ -104,12 +104,19 @@ class Joint:
         Returns:
             4×4 transformation matrix
         """
-        # TODO: Implement local transform computation (Nazar)
-        # Steps:
-        # 1. Create rotation matrix based on joint_type and angle
-        # 2. Create translation along X/Y/Z based on link geometry
-        # 3. Combine into homogeneous transform
-        raise NotImplementedError("Joint.get_local_transform: Nazar to implement")
+        # Create rotation based on joint type
+        if self.joint_type == JointType.REVOLUTE_X:
+            rot = Transform4x4.from_rotation_x(self.angle)
+        elif self.joint_type == JointType.REVOLUTE_Y:
+            rot = Transform4x4.from_rotation_y(self.angle)
+        else:  # REVOLUTE_Z
+            rot = Transform4x4.from_rotation_z(self.angle)
+        
+        # Translation along X-axis for link length
+        trans = Transform4x4.from_translation(self.link_length, 0.0, 0.0)
+        
+        # Combine: first rotate, then translate
+        return rot @ trans
 
 
 @dataclass
@@ -225,10 +232,17 @@ class RobotArm:
         Returns:
             List of transforms, one per joint, in world coordinates
         """
-        # TODO: Implement cumulative transform computation (Nazar)
-        # Start with base transform, then multiply each joint's local transform
-        # Result: [T_base, T_base·T_1, T_base·T_1·T_2, ...]
-        raise NotImplementedError("RobotArm.compute_joint_transforms: Nazar to implement")
+        transforms = []
+        # Start with base transform (translate to base position)
+        current = Transform4x4.from_translation(
+            self.base_position.x, self.base_position.y, self.base_position.z
+        )
+        
+        for joint in self.joints:
+            current = current @ joint.get_local_transform()
+            transforms.append(current)
+        
+        return transforms
 
     def get_joint_positions(self) -> List[Vector3]:
         """
@@ -237,8 +251,8 @@ class RobotArm:
         Returns:
             List of 3D positions for each joint, starting from base
         """
-        # TODO: Implement using compute_joint_transforms (Nazar)
-        raise NotImplementedError("RobotArm.get_joint_positions: Nazar to implement")
+        transforms = self.compute_joint_transforms()
+        return [t.translation for t in transforms]
 
     def get_end_effector_position(self) -> Vector3:
         """
@@ -250,8 +264,10 @@ class RobotArm:
         Returns:
             3D position of the end-effector in world coordinates
         """
-        # TODO: Implement end-effector position (Nazar)
-        raise NotImplementedError("RobotArm.get_end_effector_position: Nazar to implement")
+        transforms = self.compute_joint_transforms()
+        if not transforms:
+            return self.base_position
+        return transforms[-1].translation
 
     def get_end_effector_transform(self) -> Transform4x4:
         """
@@ -260,8 +276,12 @@ class RobotArm:
         Returns:
             4×4 transformation matrix for the end-effector frame
         """
-        # TODO: Implement full transform chain (Nazar)
-        raise NotImplementedError("RobotArm.get_end_effector_transform: Nazar to implement")
+        transforms = self.compute_joint_transforms()
+        if not transforms:
+            return Transform4x4.from_translation(
+                self.base_position.x, self.base_position.y, self.base_position.z
+            )
+        return transforms[-1]
 
 
 def compute_forward_kinematics(
